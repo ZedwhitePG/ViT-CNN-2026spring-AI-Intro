@@ -1,104 +1,60 @@
-"""
-超参数集中管理
-调参时只需要改这个文件的class参数
+# config.py
+# 集中管理所有超参数，方便调参和实验记录
+import os
 
-用法：
-    from config import VitConfig, CnnConfig, TrainConfig
-    model = ViT(**VitConfig.to_vit_kwargs())
-    model = CNN(**CnnConfig.to_cnn_kwargs())
-"""
-
-# ViT 模型超参
-class VitConfig:
-    # 图像 & patch
-    img_size        = 64        # 输入图像边长（数据集固定 64×64，不要改）
-    patch_size      = 8         # patch 边长 → num_patches = (64/8)^2 = 64
-    in_channels     = 3         # RGB
-
-    # Transformer 结构
-    embed_dim       = 256       # token 嵌入维度
-    depth           = 6         # Transformer Block 层数
-    num_heads       = 8         # 多头注意力头数（必须整除 embed_dim）
-    mlp_ratio       = 4.0       # MLP 隐层扩展倍数
-
-    # 正则化
-    dropout         = 0.1       # attention / projection / pos_drop
-    drop_path_ratio = 0.1       # stochastic depth 最大概率（线性递增到此值）
-
-    # 分类
-    num_classes     = 10        # CIFAR-10
-
-    @classmethod
-    def to_vit_kwargs(cls) -> dict:
-        """返回可直接解包给 ViT(**kwargs) 的字典"""
-        return dict(
-            img_size        = cls.img_size,
-            patch_size      = cls.patch_size,
-            in_channels     = cls.in_channels,
-            num_classes     = cls.num_classes,
-            embed_dim       = cls.embed_dim,
-            depth           = cls.depth,
-            num_heads       = cls.num_heads,
-            mlp_ratio       = cls.mlp_ratio,
-            dropout         = cls.dropout,
-            drop_path_ratio = cls.drop_path_ratio,
-        )
-
-
-# CNN 模型超参
-class CnnConfig:
-    channels    = [64, 128, 256, 512]   # 四层卷积通道数
-    dropout     = 0.1
-    num_classes = 10
-
-    @classmethod
-    def to_cnn_kwargs(cls) -> dict:
-        return dict(
-            num_classes = cls.num_classes,
-            channels    = cls.channels,
-            dropout     = cls.dropout,
-        )
+class Config:
+    # ========== 数据参数 ==========
+    data_ratio = 1.0          # 训练集使用比例 (1.0, 0.2, 0.1)
+    batch_size = 64           # 批次大小（CNN 默认用 64，ViT 会单独覆盖）
+    num_workers = 2           # 数据加载进程数
+    
+    # ========== 训练参数 ==========
+    epochs = 20               # 训练轮数（CNN 默认，ViT 会单独覆盖）
+    lr = 1e-3                 # 学习率（CNN 默认，ViT 会单独覆盖）
+    device = 'cuda'           # 'cuda' 或 'cpu'
+    
+    # ========== 模型选择 ==========
+    model_name = 'cnn'        # 'cnn' 或 'vit'
+    
+    # ========== CNN 参数 ==========
+    cnn_channels = [64, 128, 256, 512]
+    cnn_dropout = 0.1
+    
+    # ========== ViT 参数 ==========
+    vit_img_size = 64
+    vit_patch_size = 4                # 修改：8 → 4
+    vit_in_channels = 3
+    vit_embed_dim = 192               # 修改：256 → 192（必须能被 num_heads 整除，192/8=24 ✅）
+    vit_depth = 6
+    vit_num_heads = 8
+    vit_mlp_ratio = 4.0
+    vit_dropout = 0.1
+    vit_drop_path_ratio = 0.1
+    
+    # ========== ViT 专用训练参数（覆盖默认值） ==========
+    vit_epochs = 40                  # ViT 训练 100 轮
+    vit_lr = 5e-4                     # ViT 学习率 0.0005
+    vit_batch_size = 32              # ViT 批次大小（显存限制）
+    vit_warmup_epochs = 3             # ViT 预热轮数
+    
+    # ========== 优化器参数 ==========
+    weight_decay = 0.01               # AdamW 的权重衰减
+    
+    # ========== 模型保存路径（动态生成） ==========
+    @property
+    def save_path(self):
+        """根据模型名称和数据比例自动生成保存路径"""
+        os.makedirs("checkpoints", exist_ok=True)
+        return f"checkpoints/{self.model_name}_ratio{self.data_ratio}_best.pth"
 
 
-# 训练超参
-class TrainConfig:
-    # 基础
-    seed        = 42
-    num_classes = 10
-    num_epochs  = 50
-
-    # 数据
-    img_size    = 64
-    batch_size  = 128
-    num_workers = 4
-
-    # 数据规模（加分项：小数据退化实验）
-    # 支持多档：1.0 = 全量，0.2 = 20%，0.1 = 10%
-    data_fractions = [1.0, 0.2, 0.1]
-
-    # 优化器（AdamW）
-    lr              = 3e-4
-    weight_decay    = 0.05
-    betas           = (0.9, 0.999)
-
-    # 学习率调度（Cosine Annealing）
-    lr_scheduler    = "cosine"      # "cosine" | "step" | "none"
-    warmup_epochs   = 5             # 线性 warmup 轮数
-    min_lr          = 1e-6          # cosine 最低学习率
-
-    # 数据增强
-    use_augmentation = True
-    # 具体增强在 dataloader.py 里实现，这里只做开关
-
-    # 硬件
-    device      = "cuda"            # "cuda" | "cpu"
-    use_amp     = True              # 混合精度训练（RTX 4070 支持，建议开启）
-
-    # 路径
-    data_root   = "./data"
-    output_dir  = "./outputs"
-    checkpoint_dir = "./checkpoints"
-
-    # 日志 & 保存
-    log_interval    = 10            # 每隔多少 batch 打印一次 loss
-    save_best_only  = True          # 只保存 val acc 最高的 checkpoint
+# 方便直接打印配置
+if __name__ == "__main__":
+    cfg = Config()
+    print("=" * 50)
+    print("当前实验配置")
+    print("=" * 50)
+    for key, value in vars(cfg).items():
+        if not key.startswith("__") and not callable(getattr(cfg, key)):
+            print(f"{key:20} = {value}")
+    print(f"{'save_path':20} = {cfg.save_path}")
