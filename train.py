@@ -49,10 +49,26 @@ def evaluate(model, loader, device):
 
 def train_model(model, train_loader, test_loader, cfg, warmup_epochs=0):
     """
-    完整的训练流程，支持学习率预热
+    完整的训练流程，支持学习率预热，并自动记录日志到 CSV
     """
+    import csv
+    import os
+    
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    
+    # 创建 logs 目录
+    os.makedirs("logs", exist_ok=True)
+    
+    # 生成日志文件名
+    log_filename = f"logs/{cfg.model_name}_ratio{cfg.data_ratio}.csv"
+    
+    # 如果是第一次运行（文件不存在），写入表头
+    file_exists = os.path.isfile(log_filename)
+    log_file = open(log_filename, 'a', newline='')
+    csv_writer = csv.writer(log_file)
+    if not file_exists:
+        csv_writer.writerow(['epoch', 'train_loss', 'accuracy', 'macro_f1', 'lr'])
     
     epoch_times = []
     best_acc = 0.0
@@ -61,10 +77,8 @@ def train_model(model, train_loader, test_loader, cfg, warmup_epochs=0):
     # 学习率调度函数（预热 + 余弦退火）
     def adjust_lr(epoch):
         if epoch < warmup_epochs:
-            # 线性预热：从 0 到 cfg.lr
             lr = cfg.lr * (epoch + 1) / warmup_epochs
         else:
-            # 余弦退火：从 cfg.lr 降到 0
             progress = (epoch - warmup_epochs) / (cfg.epochs - warmup_epochs)
             lr = cfg.lr * 0.5 * (1 + np.cos(np.pi * progress))
         for param_group in optimizer.param_groups:
@@ -73,7 +87,6 @@ def train_model(model, train_loader, test_loader, cfg, warmup_epochs=0):
     for epoch in range(1, cfg.epochs + 1):
         start_time = time.time()
 
-        # 更新学习率（如果启用预热）
         if warmup_epochs > 0:
             adjust_lr(epoch - 1)
 
@@ -82,8 +95,12 @@ def train_model(model, train_loader, test_loader, cfg, warmup_epochs=0):
         epoch_times.append(epoch_time)
         
         acc, f1 = evaluate(model, test_loader, cfg.device)
-        
         current_lr = optimizer.param_groups[0]['lr']
+        
+        # 写入 CSV
+        csv_writer.writerow([epoch, f"{train_loss:.6f}", f"{acc:.6f}", f"{f1:.6f}", f"{current_lr:.8f}"])
+        log_file.flush()  # 立即写入磁盘，防止中断丢失数据
+        
         print(f"Epoch {epoch:3d}/{cfg.epochs} | LR: {current_lr:.6f} | Loss: {train_loss:.4f} | Time: {epoch_time:.2f}s | Acc: {acc:.4f} | F1: {f1:.4f}")
         
         if acc > best_acc:
@@ -97,6 +114,7 @@ def train_model(model, train_loader, test_loader, cfg, warmup_epochs=0):
             }, cfg.save_path)
             print(f"  -> Best model saved (acc={acc:.4f})")
     
+    log_file.close()
     avg_time = sum(epoch_times) / len(epoch_times)
     return avg_time, best_acc, best_f1
 
