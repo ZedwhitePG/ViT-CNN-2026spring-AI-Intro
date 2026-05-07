@@ -1,0 +1,33 @@
+PJ-CV3 基于 Vision Transformer (ViT) 的图像分类
+
+参考数据集： https://www.kaggle.com/datasets/joaopauloschuler/cifar10-64x64
+
+任务： 实现简化 ViT，比较与 CNN 的精度与训练效率，并可视化 attention。
+
+基础要求
+
+实现简化版 ViT（Patch Embedding + Transformer Encoder；超参写清：层数、heads、patch size、embed dim）
+
+与 CNN 对比： Accuracy/Macro-F1 + 训练效率（每 epoch 时间或总训练时间）
+
+可视化 attention map
+
+拓展方向（加分）
+
+小数据退化： 100% vs 20% vs 10%（至少 3 档）
+
+数据规模影响趋势实验（保持模型不变）
+
+额外验收物
+
+speed_accuracy_tradeoff.png
+
+attention_maps/
+
+负责：模型实现
+vit.py   — Patch Embedding + Transformer Encoder + 分类头
+cnn.py   — 对比CNN
+config.py — 超参管理（层数、heads、patch size、embed dim）
+
+参照https://blog.csdn.net/qq_51957239/article/details/132912677?ops_request_misc=elastic_search_misc&request_id=027d342470a10ccfb297ef3b79c1fe39&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~top_positive~default-1-132912677-null-null.142^v102^pc_search_result_base4&utm_term=vit%E6%A8%A1%E5%9E%8B%E4%BB%A3%E7%A0%81&spm=1018.2226.3001.4187
+

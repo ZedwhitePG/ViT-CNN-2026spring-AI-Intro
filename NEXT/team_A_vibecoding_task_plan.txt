@@ -1,0 +1,412 @@
+ViT-CNN 项目后半程：队员A Vibecoding 任务单
+角色定位：实验运行、调参与结果记录负责人
+版本：中期后优化阶段
+
+============================================================
+一、队员A的核心定位
+============================================================
+
+队员A不主要负责写核心训练代码。
+队员A的主要责任是：使用队员B优化后的代码，把所有实验完整、规范、可复现地跑出来，并整理最终结果。
+
+队员A的工作重点是三件事：
+
+1. 跑实验
+保证 CNN 和 ViT 在不同数据比例下都完整训练完成。
+
+2. 调参数
+在队员B提供的统一训练框架下，对 learning rate、batch size、epoch、warmup、weight decay、strong augmentation 等参数做有限调试。
+
+3. 记录结果
+把每次实验的参数、日志、checkpoint、最终 accuracy、F1-score、训练时间记录清楚，方便队员C画图，方便队员B写 README 和 PPT。
+
+
+============================================================
+二、队员A不需要负责的内容
+============================================================
+
+以下内容不由队员A主责：
+
+1. 不负责重写 train.py 的核心训练逻辑
+例如 Warmup + Cosine、AMP、gradient clipping、label smoothing 等由队员B统一实现。
+
+2. 不负责大改 main.py / config.py / dataset.py
+如果运行时发现这些文件有 bug，应反馈给队员B修复，而不是自己随意修改造成版本混乱。
+
+3. 不负责绘制最终图表
+Learning curve、Data Scale Trend、confusion matrix、attention map 等主要由队员C负责。
+
+4. 不负责 PPT 主体制作
+PPT 由队员B负责整合，A 只需要提供准确的实验结果和必要说明。
+
+5. 不做 Mixup / CutMix
+本阶段明确不做 Mixup / CutMix。不要自己临时加入这类增强，否则会破坏训练流程和结果可解释性。
+
+
+============================================================
+三、队员A需要运行的主实验
+============================================================
+
+主实验共 6 组：
+
+1. CNN + 10% data
+2. CNN + 20% data
+3. CNN + 100% data
+4. ViT + 10% data
+5. ViT + 20% data
+6. ViT + 100% data
+
+推荐运行命令：
+
+python main.py --model cnn --data_ratio 0.1 --epochs 100
+python main.py --model cnn --data_ratio 0.2 --epochs 100
+python main.py --model cnn --data_ratio 1.0 --epochs 100
+
+python main.py --model vit --data_ratio 0.1 --epochs 100
+python main.py --model vit --data_ratio 0.2 --epochs 100
+python main.py --model vit --data_ratio 1.0 --epochs 100
+
+如果队员B已经写好 run.sh，可以直接运行：
+
+bash run.sh
+
+注意：
+正式实验尽量使用 100 epoch。
+debug 时可以先用 2 epoch 测试脚本是否能跑通，但 debug 结果不能作为最终结果。
+
+
+============================================================
+四、队员A运行前检查清单
+============================================================
+
+在跑正式实验前，先检查：
+
+[ ] 已经拉取队员B最新代码
+[ ] conda / venv 环境正常
+[ ] PyTorch 可以识别 CUDA
+[ ] 数据集路径正确
+[ ] logs/ 文件夹存在，或代码能自动创建
+[ ] checkpoints/ 文件夹存在，或代码能自动创建
+[ ] main.py 能够读取 model 和 data_ratio 参数
+[ ] config.py 中 num_epochs、lr、weight_decay、use_amp 等设置正确
+[ ] debug 实验能用 2 epoch 跑通
+[ ] CSV 日志可以正常生成
+[ ] checkpoint 可以正常保存
+
+推荐先跑：
+
+python main.py --model vit --data_ratio 0.1 --epochs 2 --debug
+
+如果这个能跑通，再跑正式 100 epoch。
+
+
+============================================================
+五、队员A需要观察的训练现象
+============================================================
+
+每组实验训练过程中，A 要重点观察：
+
+1. loss 是否下降
+正常情况下 train_loss 应该整体下降。
+如果 loss 完全不降，可能是学习率、数据、模型或训练代码有问题。
+
+2. val_acc 是否上升
+验证集准确率应该逐渐提高。
+如果一直停留在随机水平附近，需要反馈给 B 检查训练流程。
+
+3. 是否出现 nan
+如果 loss 或 metric 出现 nan，立即停止实验，记录出错位置，并反馈给 B。
+
+4. 显存是否爆掉
+如果 CUDA out of memory，记录 batch_size、model_type、data_ratio，并尝试降低 batch_size。
+
+5. 训练速度是否异常
+如果 AMP 开启后仍然非常慢，记录单 epoch 时间，反馈给 B 检查是否真的启用了 AMP。
+
+6. checkpoint 是否保存
+每组实验结束后，必须确认 best checkpoint 已保存。
+
+7. CSV 是否完整
+每组实验结束后，必须确认对应 CSV 有完整 epoch 记录。
+
+
+============================================================
+六、队员A需要整理的结果文件
+============================================================
+
+每组实验结束后，A 要确认生成：
+
+1. 日志文件
+
+logs/cnn_ratio0.1.csv
+logs/cnn_ratio0.2.csv
+logs/cnn_ratio1.0.csv
+logs/vit_ratio0.1.csv
+logs/vit_ratio0.2.csv
+logs/vit_ratio1.0.csv
+
+2. 权重文件
+
+checkpoints/cnn_ratio0.1_best.pth
+checkpoints/cnn_ratio0.2_best.pth
+checkpoints/cnn_ratio1.0_best.pth
+checkpoints/vit_ratio0.1_best.pth
+checkpoints/vit_ratio0.2_best.pth
+checkpoints/vit_ratio1.0_best.pth
+
+3. 结果记录表
+
+建议整理成 results_summary.csv，包含：
+
+model
+data_ratio
+epochs
+learning_rate
+batch_size
+weight_decay
+use_amp
+use_strong_aug
+best_val_acc
+best_val_f1
+final_val_acc
+final_val_f1
+best_epoch
+training_time
+log_path
+checkpoint_path
+notes
+
+
+============================================================
+七、队员A的调参范围
+============================================================
+
+队员A可以调的参数：
+
+1. learning rate
+默认使用 3e-4。
+如果 ViT 震荡，可以尝试 1e-4。
+如果 CNN 收敛太慢，可以尝试 5e-4 或 1e-3，但必须记录。
+
+2. batch size
+根据显存调整。
+如果 OOM，优先降低 batch size。
+
+3. epochs
+正式实验使用 100。
+debug 使用 2 或 5。
+如果 100 epoch 后曲线仍未收敛，可以记录并建议延长，但不要擅自改变主实验标准。
+
+4. warmup_epochs
+默认 5。
+一般不要大改，除非出现明显前期震荡。
+
+5. weight_decay
+默认 0.05。
+如果模型明显欠拟合，可尝试降低；如果过拟合，可尝试提高。
+所有尝试必须记录。
+
+6. strong augmentation
+可以做额外实验，但不要和主实验混在一起。
+主实验和增强实验要分开记录。
+
+不建议调的内容：
+
+1. 不改模型结构
+不要临时改 ViT 的 patch_size、embed_dim、depth、num_heads。
+这些由队员B统一控制。
+
+2. 不改核心训练循环
+不要自己改 AMP、scheduler、loss 计算逻辑。
+
+3. 不加 Mixup / CutMix
+本阶段明确不做。
+
+
+============================================================
+八、队员A调参记录模板
+============================================================
+
+每次调参都要记录，不要只口头说。
+
+建议写成 tuning_log.txt 或 tuning_log.csv。
+
+字段如下：
+
+experiment_id:
+date:
+operator: 队员A
+model:
+data_ratio:
+epochs:
+batch_size:
+learning_rate:
+weight_decay:
+warmup_epochs:
+use_amp:
+use_strong_aug:
+label_smoothing:
+grad_clip_norm:
+best_val_acc:
+best_val_f1:
+best_epoch:
+training_time:
+log_path:
+checkpoint_path:
+observation:
+decision:
+
+示例：
+
+experiment_id: vit_ratio1.0_lr3e4
+model: vit
+data_ratio: 1.0
+epochs: 100
+batch_size: 128
+learning_rate: 3e-4
+weight_decay: 0.05
+warmup_epochs: 5
+use_amp: True
+use_strong_aug: False
+best_val_acc: 待填写
+best_val_f1: 待填写
+observation: 前期 loss 稳定下降，val_acc 在后期趋于平稳
+decision: 作为主实验结果保留
+
+
+============================================================
+九、队员A发现问题时如何反馈给B
+============================================================
+
+如果实验报错，不要只说“跑不了”。
+要按下面格式反馈：
+
+1. 运行命令
+例如：
+python main.py --model vit --data_ratio 0.1 --epochs 100
+
+2. 报错截图或报错文本
+复制最后 20 行 traceback。
+
+3. 当前环境
+GPU:
+CUDA version:
+PyTorch version:
+batch_size:
+
+4. 出错阶段
+是数据加载时报错？
+是模型初始化时报错？
+是训练第几个 epoch 报错？
+是保存 checkpoint 报错？
+是验证阶段报错？
+
+5. 已经尝试过什么
+例如：
+降低 batch_size 后是否还报错；
+debug 2 epoch 是否能跑；
+CNN 是否能跑，ViT 是否不能跑。
+
+这样 B 才能快速修。
+
+
+============================================================
+十、队员A给C的交付内容
+============================================================
+
+A 最终需要给 C：
+
+1. 六个 CSV 日志文件
+用于画 learning curve。
+
+2. 六个 best checkpoint
+用于画 confusion matrix，尤其是 CNN 和 ViT 在 100% data 下的比较。
+
+3. results_summary.csv
+用于画 Data Scale Trend。
+
+4. 简短实验说明
+说明哪些结果是主实验，哪些结果是额外调参或 strong augmentation 实验。
+
+5. 异常记录
+如果某组实验没有跑完，必须说明原因。
+
+
+============================================================
+十一、给 AI / Codex 的队员A Vibecoding Prompt
+============================================================
+
+可以直接复制以下内容给 AI/Codex：
+
+你现在协助我完成 ViT-CNN 项目的队员A任务。我的角色不是写核心训练代码，而是负责实验运行、调参和结果记录。队员B已经负责优化 train.py、config.py、main.py、run.sh、dataset.py 和 checkpoint/log 逻辑。队员C负责画图。
+
+请帮我完成以下工作：
+
+1. 根据当前仓库，检查 main.py 是否能通过命令行运行以下 6 组实验：
+python main.py --model cnn --data_ratio 0.1 --epochs 100
+python main.py --model cnn --data_ratio 0.2 --epochs 100
+python main.py --model cnn --data_ratio 1.0 --epochs 100
+python main.py --model vit --data_ratio 0.1 --epochs 100
+python main.py --model vit --data_ratio 0.2 --epochs 100
+python main.py --model vit --data_ratio 1.0 --epochs 100
+
+2. 如果正式运行前需要 debug，请先运行：
+python main.py --model vit --data_ratio 0.1 --epochs 2 --debug
+确认 dataloader、model、train loop、log、checkpoint 都正常。
+
+3. 帮我设计一个 results_summary.csv，用来记录：
+model, data_ratio, epochs, learning_rate, batch_size, weight_decay, use_amp, use_strong_aug, best_val_acc, best_val_f1, final_val_acc, final_val_f1, best_epoch, training_time, log_path, checkpoint_path, notes
+
+4. 帮我设计一个 tuning_log.csv，用来记录每次调参的参数和结果。
+
+5. 帮我检查 logs/ 下是否生成：
+cnn_ratio0.1.csv
+cnn_ratio0.2.csv
+cnn_ratio1.0.csv
+vit_ratio0.1.csv
+vit_ratio0.2.csv
+vit_ratio1.0.csv
+
+6. 帮我检查 checkpoints/ 下是否生成：
+cnn_ratio0.1_best.pth
+cnn_ratio0.2_best.pth
+cnn_ratio1.0_best.pth
+vit_ratio0.1_best.pth
+vit_ratio0.2_best.pth
+vit_ratio1.0_best.pth
+
+7. 如果训练中出现 nan、loss 不下降、val_acc 异常、CUDA OOM、checkpoint 保存失败，请帮我整理 bug report，格式包括：
+运行命令、报错文本、出错阶段、当前参数、可能原因、建议反馈给队员B的内容。
+
+8. 不要实现 Mixup / CutMix。
+不要改核心 train.py 逻辑。
+不要随意改模型结构。
+如果必须改代码，只做运行辅助、日志检查、结果整理相关的小脚本。
+
+最终请输出：
+- 如何运行所有实验；
+- 如何判断实验是否成功；
+- results_summary.csv 模板；
+- tuning_log.csv 模板；
+- 每组实验完成后应该检查哪些文件；
+- 出错时如何反馈给队员B。
+
+
+============================================================
+十二、队员A最终验收标准
+============================================================
+
+队员A完成任务的标准：
+
+[ ] 六组主实验全部跑完
+[ ] 每组实验都有完整 CSV 日志
+[ ] 每组实验都有 best checkpoint
+[ ] results_summary.csv 填写完整
+[ ] tuning_log.csv 或调参记录填写完整
+[ ] 训练异常有明确记录
+[ ] 能说明最终采用哪组结果
+[ ] 能把结果文件交给 C 出图
+[ ] 能把结果表交给 B 写 README 和 PPT
+
+一句话总结：
+队员A负责把 B 写好的代码真实跑成结果。A 的价值不在于改代码，而在于保证实验完整、参数清楚、结果可信、文件可交付。

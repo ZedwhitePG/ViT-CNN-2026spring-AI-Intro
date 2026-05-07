@@ -1,0 +1,469 @@
+ViT-CNN 项目中期后两周总分工安排
+周期：2 周
+阶段目标：完成代码优化、实验重跑、结果可视化、README 与最终 PPT 整合
+核心分工：队员B写代码，队员A跑实验和调参，队员C出图和错误分析
+
+
+============================================================
+一、总体目标
+============================================================
+
+目前项目已经完成中期汇报，后续两周的重点不是继续大幅更换模型，而是围绕现有 CNN 与 ViT 框架完成以下工作：
+
+1. 修复中期暴露出的训练与可视化问题；
+2. 完成训练策略优化，提高模型稳定性和最终表现；
+3. 重新运行 CNN 与 ViT 在不同数据比例下的主实验；
+4. 生成最终报告和 PPT 所需图表；
+5. 整理 README、实验结果表和最终展示材料。
+
+本阶段采用三线分工：
+
+队员B：代码优化与工程整合负责人；
+队员A：实验运行、调参与结果记录负责人；
+队员C：可视化、错误分析与图表材料负责人。
+
+一句话原则：
+队员B负责代码能不能稳定跑，队员A负责实验能不能完整跑完，队员C负责图表能不能支撑最终结论。
+
+
+============================================================
+二、总体限制与共识
+============================================================
+
+1. 本阶段不做 Mixup / CutMix
+原因是 Mixup / CutMix 会修改 label 处理和 loss 计算逻辑，实现成本较高，也会增加报告解释难度。除 Mixup / CutMix 外，其他常规优化都可以进行。
+
+2. 不随意更换主模型结构
+CNN 与 ViT 作为主要对比模型保留，不临时加入新的复杂模型，避免实验主线混乱。
+
+3. 所有关键参数必须可追踪
+learning rate、epoch、batch size、data ratio、weight decay、scheduler、augmentation 等设置必须能从 config、命令行参数、日志或结果表中查到。
+
+4. 所有输出文件命名必须统一
+logs、checkpoints、figures 的文件名必须体现 model 和 data_ratio，避免后期合并混乱。
+
+5. 主实验和额外优化实验分开
+主实验优先保证 CNN × 10%/20%/100% 与 ViT × 10%/20%/100% 六组结果完整。
+如果做 stronger augmentation 或额外调参，必须单独记录，不能和主实验混在一起。
+
+
+============================================================
+三、队员B分工：代码优化与工程整合负责人
+============================================================
+
+队员B负责所有代码层面的优化和工程整合。
+
+主要任务：
+
+1. config.py 配置统一
+负责统一 learning_rate、num_epochs、batch_size、warmup_epochs、weight_decay、use_amp、label_smoothing、grad_clip_norm、data_ratio、model_type、strong_aug 等参数。
+
+要求：
+所有关键参数尽量从 config 或命令行读取，不要在 train.py、main.py、dataset.py、visualize_attention.py 中多处硬编码。
+
+2. train.py 训练流程优化
+负责实现或确认以下训练优化：
+
+Warmup + Cosine 学习率调度；
+learning rate 统一为 3e-4；
+num_epochs 默认改为 100；
+AMP 混合精度训练；
+gradient clipping，max_norm=1.0；
+CrossEntropyLoss 加 label_smoothing=0.1；
+AdamW optimizer，weight_decay=0.05；
+训练与验证指标统计；
+每个 epoch 输出日志。
+
+3. main.py 统一实验入口
+负责让 main.py 支持命令行运行指定实验，例如：
+
+python main.py --model vit --data_ratio 1.0 --epochs 100
+python main.py --model cnn --data_ratio 0.2 --epochs 100
+
+4. run.sh 一键实验脚本
+负责编写一键运行六组主实验的脚本：
+
+CNN + 10% data
+CNN + 20% data
+CNN + 100% data
+ViT + 10% data
+ViT + 20% data
+ViT + 100% data
+
+5. CSV 日志输出
+负责保证每组实验输出独立 CSV，例如：
+
+logs/cnn_ratio0.1.csv
+logs/cnn_ratio0.2.csv
+logs/cnn_ratio1.0.csv
+logs/vit_ratio0.1.csv
+logs/vit_ratio0.2.csv
+logs/vit_ratio1.0.csv
+
+CSV 至少包含：
+
+epoch
+train_loss
+train_acc
+val_loss
+val_acc
+val_f1
+lr
+epoch_time
+best_val_acc
+
+6. checkpoint 保存规范
+负责保证每组实验保存 best checkpoint，例如：
+
+checkpoints/cnn_ratio0.1_best.pth
+checkpoints/cnn_ratio0.2_best.pth
+checkpoints/cnn_ratio1.0_best.pth
+checkpoints/vit_ratio0.1_best.pth
+checkpoints/vit_ratio0.2_best.pth
+checkpoints/vit_ratio1.0_best.pth
+
+7. dataset.py 常规数据增强
+在不做 Mixup / CutMix 的前提下，可以加入：
+
+RandomCrop(64, padding=8)
+ColorJitter(0.4, 0.4, 0.4, 0.1)
+RandomErasing(p=0.25)
+
+要求：
+训练集可以使用随机增强，验证集和测试集不能使用随机增强。
+strong augmentation 最好作为开关，而不是强行写死。
+
+8. visualize_attention.py 配置修复
+负责修复 attention 可视化脚本中的 ViT 配置不一致问题，确保 patch_size、embed_dim、depth、num_heads 与训练时模型一致。
+
+9. README 与 PPT 整合
+负责搭建 README 基础结构，并在 A 和 C 交付结果后整合最终 PPT。
+
+队员B交付物：
+
+优化后的 config.py
+优化后的 train.py
+统一入口 main.py
+一键运行 run.sh
+修复后的 dataset.py
+修复后的 visualize_attention.py
+README.md
+最终 PPT 初稿与终稿
+给 A 的运行说明
+给 C 的图表输入路径说明
+
+队员B责任边界：
+如果代码无法运行、训练脚本报错、日志格式不统一、checkpoint 命名混乱、attention 脚本因配置不一致无法加载模型、README 或 PPT 缺少结构，主要由队员B负责。
+
+
+============================================================
+四、队员A分工：实验运行、调参与结果记录负责人
+============================================================
+
+队员A负责使用队员B提供的代码运行实验、调试参数、记录结果。
+
+主要任务：
+
+1. 运行六组主实验
+
+python main.py --model cnn --data_ratio 0.1 --epochs 100
+python main.py --model cnn --data_ratio 0.2 --epochs 100
+python main.py --model cnn --data_ratio 1.0 --epochs 100
+python main.py --model vit --data_ratio 0.1 --epochs 100
+python main.py --model vit --data_ratio 0.2 --epochs 100
+python main.py --model vit --data_ratio 1.0 --epochs 100
+
+如果 run.sh 已经测试通过，可以直接运行：
+
+bash run.sh
+
+2. 正式运行前先 debug
+正式实验前先跑 2 epoch 测试：
+
+python main.py --model vit --data_ratio 0.1 --epochs 2 --debug
+
+确认 dataloader、model、train loop、CSV log、checkpoint 都正常。
+
+3. 观察训练过程
+每组实验训练时需要观察：
+
+loss 是否正常下降；
+val_acc 是否正常上升；
+是否出现 nan；
+是否显存爆掉；
+是否训练速度异常；
+是否保存 checkpoint；
+是否写入完整 CSV。
+
+4. 调参
+可在队员B的代码框架内调试：
+
+learning rate；
+batch size；
+warmup_epochs；
+weight_decay；
+是否开启 strong augmentation；
+epoch 数。
+
+注意：
+所有调参必须记录。
+不要随意改模型结构。
+不要加入 Mixup / CutMix。
+不要擅自改 train.py 核心逻辑。
+
+5. 整理结果表
+最终需要整理 results_summary.csv，建议包含：
+
+model
+data_ratio
+epochs
+learning_rate
+batch_size
+weight_decay
+use_amp
+use_strong_aug
+best_val_acc
+best_val_f1
+final_val_acc
+final_val_f1
+best_epoch
+training_time
+log_path
+checkpoint_path
+notes
+
+6. 整理调参记录
+如果做过多组调参，需要额外整理 tuning_log.csv 或 tuning_log.txt，说明每组参数和结果。
+
+7. 反馈 bug
+如果实验出错，不能只说“跑不了”，需要反馈：
+
+运行命令；
+报错文本或截图；
+出错阶段；
+当前参数；
+是否是 CNN / ViT；
+是否是某个 data_ratio；
+是否尝试过降低 batch size；
+建议队员B检查的内容。
+
+队员A交付物：
+
+六组主实验 CSV 日志；
+六组主实验 best checkpoint；
+results_summary.csv；
+tuning_log.csv 或调参记录；
+训练异常记录；
+最终采用结果说明。
+
+队员A责任边界：
+如果实验没有跑完、结果记录缺失、参数记录不清、日志或 checkpoint 丢失、训练异常没有及时反馈，主要由队员A负责。
+
+
+============================================================
+五、队员C分工：可视化、错误分析与图表材料负责人
+============================================================
+
+队员C负责根据队员A生成的 logs、checkpoints 和 results_summary.csv 制作最终图表。
+
+主要任务：
+
+1. Learning Curve 图
+根据 logs/*.csv 绘制训练曲线，包括：
+
+train_loss；
+val_acc；
+val_f1。
+
+建议输出：
+
+figures/learning_curve_cnn.png
+figures/learning_curve_vit.png
+figures/learning_curve_compare_ratio0.1.png
+figures/learning_curve_compare_ratio0.2.png
+figures/learning_curve_compare_ratio1.0.png
+
+2. Data Scale Trend 图
+根据 results_summary.csv 绘制数据规模趋势图。
+
+横轴：
+10%、20%、100% data ratio
+
+纵轴：
+best_val_acc 或 best_val_f1
+
+曲线：
+CNN 一条线；
+ViT 一条线。
+
+建议输出：
+
+figures/data_scale_trend_accuracy.png
+figures/data_scale_trend_f1.png
+
+3. Confusion Matrix 图
+加载 100% data 下的 best checkpoint，绘制 CNN 和 ViT 的混淆矩阵。
+
+建议输出：
+
+figures/confusion_matrix_cnn_ratio1.0.png
+figures/confusion_matrix_vit_ratio1.0.png
+
+如果时间允许，可以补充 10% data 下的混淆矩阵。
+
+重点分析类别：
+
+cat / dog
+automobile / truck
+deer / horse
+bird / airplane
+
+4. Class Error Analysis
+整理类别级错误分析，输出 class_error_analysis.txt。
+
+内容包括：
+
+每个模型错误率最高的类别；
+最容易混淆的类别对；
+CNN 和 ViT 的类别错误差异；
+这些差异如何支撑最终结论。
+
+5. Attention Map
+使用修复后的 visualize_attention.py 生成 ViT attention map。
+
+建议输出：
+
+figures/attention_map_vit_ratio1.0_sample1.png
+figures/attention_map_vit_ratio1.0_sample2.png
+figures/attention_map_vit_ratio1.0_sample3.png
+
+如果 attention 脚本因为 patch_size、embed_dim、depth、num_heads 不一致报错，需要反馈给队员B统一修复，不要自行乱改模型结构。
+
+6. 图像风格统一
+所有图表需要：
+
+标题清楚；
+坐标轴完整；
+图例完整；
+分辨率至少 300 dpi；
+适合放入报告和 PPT；
+命名规范；
+统一保存到 figures/ 文件夹。
+
+队员C交付物：
+
+learning curve 图；
+data scale trend 图；
+CNN confusion matrix；
+ViT confusion matrix；
+attention map 至少 3 张；
+class_error_analysis.txt；
+可放入 PPT 的推荐图清单。
+
+队员C责任边界：
+如果图表缺失、图像不清晰、坐标轴/图例不完整、错误分析不到位、最终图片无法放入报告或 PPT，主要由队员C负责。
+
+
+============================================================
+六、两周时间安排
+============================================================
+
+B先花3天 写出代码放在Github中
+A再花3天 跑出结果放在Github中
+C再花3天 把可视化结果Github传
+
+
+
+============================================================
+八、最终交付物总清单
+============================================================
+
+代码类：
+
+config.py
+train.py
+main.py
+run.sh
+utils/dataset.py
+visualize_attention.py
+README.md
+
+实验结果类：
+
+logs/cnn_ratio0.1.csv
+logs/cnn_ratio0.2.csv
+logs/cnn_ratio1.0.csv
+logs/vit_ratio0.1.csv
+logs/vit_ratio0.2.csv
+logs/vit_ratio1.0.csv
+
+checkpoints/cnn_ratio0.1_best.pth
+checkpoints/cnn_ratio0.2_best.pth
+checkpoints/cnn_ratio1.0_best.pth
+checkpoints/vit_ratio0.1_best.pth
+checkpoints/vit_ratio0.2_best.pth
+checkpoints/vit_ratio1.0_best.pth
+
+results_summary.csv
+tuning_log.csv 或 tuning_log.txt
+
+图表类：
+
+figures/learning_curve_cnn.png
+figures/learning_curve_vit.png
+figures/learning_curve_compare_ratio0.1.png
+figures/learning_curve_compare_ratio0.2.png
+figures/learning_curve_compare_ratio1.0.png
+figures/data_scale_trend_accuracy.png
+figures/data_scale_trend_f1.png
+figures/confusion_matrix_cnn_ratio1.0.png
+figures/confusion_matrix_vit_ratio1.0.png
+figures/attention_map_vit_ratio1.0_sample1.png
+figures/attention_map_vit_ratio1.0_sample2.png
+figures/attention_map_vit_ratio1.0_sample3.png
+class_error_analysis.txt
+
+展示类：
+
+最终 PPT
+README 结果展示部分
+图表说明文字
+最终结论总结
+
+
+============================================================
+九、协作规则
+============================================================
+
+1. B 改代码后要及时说明改了哪些文件、如何运行。
+2. A 跑实验前必须确认自己使用的是 B 的最新代码。
+3. A 发现报错要提供完整命令和报错信息，不能只说“跑不了”。
+4. C 画图前必须确认使用的是最终版 logs 和 checkpoints。
+5. C 发现日志字段或 checkpoint 加载问题，要及时反馈给 B。
+6. 所有人不要私自改动别人主责部分的核心文件。
+7. 所有中间结果都要保留，不要随便覆盖。
+8. 最终结果以 results_summary.csv 和 figures/ 文件夹为准。
+
+
+============================================================
+十、最终分锅原则
+============================================================
+
+代码问题：
+包括代码跑不通、训练逻辑错误、日志格式错误、checkpoint 命名混乱、attention 配置不一致，主要由队员B负责。
+
+实验问题：
+包括实验没跑完、参数没记录、结果缺失、checkpoint 丢失、异常没有反馈，主要由队员A负责。
+
+图表问题：
+包括图没画完、图不清晰、图例坐标轴缺失、错误分析不到位、PPT 图像不可用，主要由队员C负责。
+
+整合问题：
+包括 README、PPT、最终材料组织，主要由队员B负责，但 A 和 C 必须按时交付结果和图表。
+
+
+============================================================
+十一、最终一句话
+============================================================
+
+未来两周按照“B 写代码并整合，A 跑实验并调参，C 出图并分析”的方式推进。两周内尽量解决 不要干扰期末考准备

@@ -1,36 +1,42 @@
 """
-超参数集中管理
-调参时只需要改这个文件的class参数
+Project-wide configuration.
 
-用法：
+Keep model, training, data, logging, and checkpoint settings here so that
+train.py, main.py, dataset.py, and visualize_attention.py do not each carry
+their own hard-coded experiment parameters.
+
+Usage:
     from config import VitConfig, CnnConfig, TrainConfig
     model = ViT(**VitConfig.to_vit_kwargs())
     model = CNN(**CnnConfig.to_cnn_kwargs())
 """
 
+import torch
+
 # ViT 模型超参
 class VitConfig:
-    # 图像 & patch
-    img_size        = 64        # 输入图像边长（数据集固定 64×64，不要改）
-    patch_size      = 8         # patch 边长 → num_patches = (64/8)^2 = 64
-    in_channels     = 3         # RGB
+    # Image and patch settings.
+    img_size        = 64
+    image_size      = img_size
+    patch_size      = 8
+    in_channels     = 3
 
-    # Transformer 结构
-    embed_dim       = 256       # token 嵌入维度
-    depth           = 6         # Transformer Block 层数
-    num_heads       = 8         # 多头注意力头数（必须整除 embed_dim）
-    mlp_ratio       = 4.0       # MLP 隐层扩展倍数
+    # Transformer structure.
+    embed_dim       = 256
+    depth           = 6
+    num_heads       = 8
+    mlp_ratio       = 4.0
 
-    # 正则化
-    dropout         = 0.1       # attention / projection / pos_drop
-    drop_path_ratio = 0.1       # stochastic depth 最大概率（线性递增到此值）
+    # Regularization.
+    dropout         = 0.1
+    drop_path_ratio = 0.1
 
-    # 分类
-    num_classes     = 10        # CIFAR-10
+    # Classification.
+    num_classes     = 10
 
     @classmethod
     def to_vit_kwargs(cls) -> dict:
-        """返回可直接解包给 ViT(**kwargs) 的字典"""
+        """Return keyword arguments accepted by ViT."""
         return dict(
             img_size        = cls.img_size,
             patch_size      = cls.patch_size,
@@ -43,6 +49,10 @@ class VitConfig:
             dropout         = cls.dropout,
             drop_path_ratio = cls.drop_path_ratio,
         )
+
+    @classmethod
+    def to_dict(cls) -> dict:
+        return cls.to_vit_kwargs()
 
 
 # CNN 模型超参
@@ -59,46 +69,113 @@ class CnnConfig:
             dropout     = cls.dropout,
         )
 
+    @classmethod
+    def to_dict(cls) -> dict:
+        return cls.to_cnn_kwargs()
+
 
 # 训练超参
 class TrainConfig:
-    # 基础
-    seed        = 42
-    num_classes = 10
-    num_epochs  = 50
+    # Basic training settings.
+    seed         = 42
+    num_classes  = 10
+    num_epochs   = 100
+    batch_size   = 128
+    num_workers  = 4
+    device       = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # 数据
-    img_size    = 64
-    batch_size  = 128
-    num_workers = 4
+    # Experiment settings.
+    model_type     = "cnn"          # "cnn" or "vit"
+    data_ratio     = 1.0            # 1.0, 0.2, or 0.1
+    data_fractions = [0.1, 0.2, 1.0]
 
-    # 数据规模（加分项：小数据退化实验）
-    # 支持多档：1.0 = 全量，0.2 = 20%，0.1 = 10%
-    data_fractions = [1.0, 0.2, 0.1]
+    # Data settings.
+    img_size   = 64
+    data_root  = "./data"
+    train_dir  = "./data/cifar10-64/train"
+    test_dir   = "./data/cifar10-64/test"
 
-    # 优化器（AdamW）
-    lr              = 3e-4
-    weight_decay    = 0.05
-    betas           = (0.9, 0.999)
+    # Optimizer.
+    learning_rate = 3e-4
+    lr            = learning_rate   # Backward-compatible alias.
+    weight_decay  = 0.05
+    betas         = (0.9, 0.999)
 
-    # 学习率调度（Cosine Annealing）
-    lr_scheduler    = "cosine"      # "cosine" | "step" | "none"
-    warmup_epochs   = 5             # 线性 warmup 轮数
-    min_lr          = 1e-6          # cosine 最低学习率
+    # Learning rate scheduler.
+    scheduler     = "warmup_cosine"
+    lr_scheduler  = scheduler       # Backward-compatible alias.
+    warmup_epochs = 5
+    min_lr        = 1e-6
 
-    # 数据增强
-    use_augmentation = True
-    # 具体增强在 dataloader.py 里实现，这里只做开关
+    # AMP and regularization.
+    use_amp          = True
+    label_smoothing  = 0.1
+    grad_clip_norm   = 1.0
 
-    # 硬件
-    device      = "cuda"            # "cuda" | "cpu"
-    use_amp     = True              # 混合精度训练（RTX 4070 支持，建议开启）
+    # Data augmentation. Mixup/CutMix are intentionally disabled for this stage.
+    use_augmentation     = True
+    use_strong_aug       = False
+    use_random_crop      = True
+    use_color_jitter     = True
+    use_random_erasing   = True
+    random_erasing_p     = 0.25
+    random_crop_padding  = 8
+    color_jitter         = (0.4, 0.4, 0.4, 0.1)
+    use_mixup            = False
+    use_cutmix           = False
 
-    # 路径
-    data_root   = "./data"
-    output_dir  = "./outputs"
+    # Output paths.
+    save_dir       = "./checkpoints"
+    log_dir        = "./logs"
+    figure_dir     = "./figures"
+    output_dir     = "./outputs"
     checkpoint_dir = "./checkpoints"
 
-    # 日志 & 保存
-    log_interval    = 10            # 每隔多少 batch 打印一次 loss
-    save_best_only  = True          # 只保存 val acc 最高的 checkpoint
+    # Logging and checkpoint policy.
+    log_interval   = 10
+    save_best_only = True
+    save_last      = True
+
+    @classmethod
+    def experiment_name(cls, model_type=None, data_ratio=None) -> str:
+        model_type = model_type or cls.model_type
+        data_ratio = cls.data_ratio if data_ratio is None else data_ratio
+        return f"{model_type}_ratio{data_ratio}"
+
+    @classmethod
+    def log_path(cls, model_type=None, data_ratio=None) -> str:
+        return f"{cls.log_dir}/{cls.experiment_name(model_type, data_ratio)}.csv"
+
+    @classmethod
+    def best_checkpoint_path(cls, model_type=None, data_ratio=None) -> str:
+        return f"{cls.checkpoint_dir}/{cls.experiment_name(model_type, data_ratio)}_best.pth"
+
+    @classmethod
+    def last_checkpoint_path(cls, model_type=None, data_ratio=None) -> str:
+        return f"{cls.checkpoint_dir}/{cls.experiment_name(model_type, data_ratio)}_last.pth"
+
+    @classmethod
+    def to_dict(cls) -> dict:
+        fields = {
+            "seed", "num_classes", "num_epochs", "batch_size", "num_workers",
+            "device", "model_type", "data_ratio", "data_fractions", "img_size",
+            "data_root", "train_dir", "test_dir", "learning_rate", "lr",
+            "weight_decay", "betas", "scheduler", "lr_scheduler",
+            "warmup_epochs", "min_lr", "use_amp", "label_smoothing",
+            "grad_clip_norm", "use_augmentation", "use_strong_aug",
+            "use_random_crop", "use_color_jitter", "use_random_erasing",
+            "random_erasing_p", "random_crop_padding", "color_jitter",
+            "use_mixup", "use_cutmix", "save_dir", "log_dir", "figure_dir",
+            "output_dir", "checkpoint_dir", "log_interval", "save_best_only",
+            "save_last",
+        }
+        return {name: getattr(cls, name) for name in fields}
+
+
+def get_full_config() -> dict:
+    """Return a serializable snapshot for logs and checkpoints."""
+    return {
+        "train": TrainConfig.to_dict(),
+        "vit": VitConfig.to_dict(),
+        "cnn": CnnConfig.to_dict(),
+    }

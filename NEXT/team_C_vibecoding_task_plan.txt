@@ -1,0 +1,514 @@
+ViT-CNN 项目后半程：队员C Vibecoding 任务单
+角色定位：可视化、错误分析与图表材料负责人
+版本：中期后优化阶段
+
+============================================================
+一、队员C的核心定位
+============================================================
+
+队员C不主要负责训练代码，也不主要负责跑完整实验。
+队员C的主要责任是：根据队员A跑出的实验日志和 checkpoint，生成报告与 PPT 可直接使用的图表材料。
+
+队员C的工作重点是四类图：
+
+1. Learning Curve
+展示训练过程是否稳定，CNN 和 ViT 的 loss / accuracy / F1 变化。
+
+2. Data Scale Trend
+展示 10%、20%、100% 数据比例下，CNN 和 ViT 性能随数据规模变化的趋势。
+
+3. Confusion Matrix
+展示模型在哪些类别上容易混淆，并做类别级错误分析。
+
+4. Attention Map
+展示 ViT 的注意力区域，用于解释 ViT 关注图像局部/全局信息的方式。
+
+
+============================================================
+二、队员C不需要负责的内容
+============================================================
+
+以下内容不由队员C主责：
+
+1. 不负责训练优化
+Warmup + Cosine、AMP、gradient clipping、label smoothing、AdamW、weight_decay 等由队员B负责。
+
+2. 不负责完整跑 6 组主实验
+完整训练由队员A负责。C 只需要在必要时加载已有 checkpoint 做推理和画图。
+
+3. 不负责大改模型结构
+不要临时修改 ViT 的 patch_size、embed_dim、depth、num_heads。
+如果 attention 可视化加载失败，应反馈给 B 修复配置。
+
+4. 不负责最终 PPT 总整合
+PPT 由队员B负责，C 提供可直接放入 PPT 的高质量图像。
+
+5. 不做 Mixup / CutMix
+本阶段不引入 Mixup / CutMix，也不需要为 Mixup / CutMix 画额外图。
+
+
+============================================================
+三、队员C需要的输入文件
+============================================================
+
+C 的输入来自 A 和 B：
+
+1. CSV 日志文件
+
+logs/cnn_ratio0.1.csv
+logs/cnn_ratio0.2.csv
+logs/cnn_ratio1.0.csv
+logs/vit_ratio0.1.csv
+logs/vit_ratio0.2.csv
+logs/vit_ratio1.0.csv
+
+每个 CSV 应至少包含：
+epoch
+train_loss
+train_acc
+val_loss
+val_acc
+val_f1
+lr
+epoch_time
+best_val_acc
+
+2. checkpoint 文件
+
+checkpoints/cnn_ratio0.1_best.pth
+checkpoints/cnn_ratio0.2_best.pth
+checkpoints/cnn_ratio1.0_best.pth
+checkpoints/vit_ratio0.1_best.pth
+checkpoints/vit_ratio0.2_best.pth
+checkpoints/vit_ratio1.0_best.pth
+
+3. results_summary.csv
+
+字段建议包括：
+model
+data_ratio
+best_val_acc
+best_val_f1
+final_val_acc
+final_val_f1
+best_epoch
+training_time
+log_path
+checkpoint_path
+
+4. 测试集 dataloader 或测试集路径
+
+用于 confusion matrix 和 attention map。
+
+
+============================================================
+四、队员C需要输出的图像文件
+============================================================
+
+建议统一输出到 figures/ 文件夹：
+
+1. Learning Curve 图
+
+figures/learning_curve_cnn.png
+figures/learning_curve_vit.png
+figures/learning_curve_compare_ratio0.1.png
+figures/learning_curve_compare_ratio0.2.png
+figures/learning_curve_compare_ratio1.0.png
+
+2. Data Scale Trend 图
+
+figures/data_scale_trend_accuracy.png
+figures/data_scale_trend_f1.png
+
+3. Confusion Matrix 图
+
+figures/confusion_matrix_cnn_ratio1.0.png
+figures/confusion_matrix_vit_ratio1.0.png
+可选：
+figures/confusion_matrix_cnn_ratio0.1.png
+figures/confusion_matrix_vit_ratio0.1.png
+
+4. Attention Map 图
+
+figures/attention_map_vit_ratio1.0_sample1.png
+figures/attention_map_vit_ratio1.0_sample2.png
+figures/attention_map_vit_ratio1.0_sample3.png
+
+5. 类别错误分析图或表
+
+figures/class_error_comparison.png
+figures/top_confused_classes.png
+
+
+============================================================
+五、队员C详细任务 1：Learning Curve
+============================================================
+
+目标：
+用 logs/*.csv 绘制训练曲线，展示模型训练过程是否稳定。
+
+建议绘制内容：
+
+1. CNN 单独曲线
+读取：
+logs/cnn_ratio0.1.csv
+logs/cnn_ratio0.2.csv
+logs/cnn_ratio1.0.csv
+
+输出：
+figures/learning_curve_cnn.png
+
+图中可以包含：
+train_loss
+val_acc
+val_f1
+
+2. ViT 单独曲线
+读取：
+logs/vit_ratio0.1.csv
+logs/vit_ratio0.2.csv
+logs/vit_ratio1.0.csv
+
+输出：
+figures/learning_curve_vit.png
+
+3. 同数据比例下 CNN vs ViT 对比
+例如：
+ratio=1.0 时，画 CNN 和 ViT 的 val_acc 曲线对比。
+
+输出：
+figures/learning_curve_compare_ratio1.0.png
+
+图表要求：
+- 横轴：epoch
+- 纵轴：accuracy / F1 / loss
+- 必须有图例
+- 必须有标题
+- 必须有坐标轴名称
+- 分辨率至少 300 dpi
+- 图像风格统一，适合放入报告和 PPT
+
+验收标准：
+B 可以直接把图放进 PPT，图中信息清晰，不需要重新美化。
+
+
+============================================================
+六、队员C详细任务 2：Data Scale Trend 图
+============================================================
+
+目标：
+展示数据比例从 10% 到 20% 再到 100% 时，CNN 和 ViT 的性能变化。
+
+输入：
+results_summary.csv 或 6 个 logs csv
+
+横轴：
+data_ratio = [10%, 20%, 100%]
+
+纵轴：
+best_val_acc 或 best_val_f1
+
+曲线：
+CNN 一条线
+ViT 一条线
+
+输出：
+figures/data_scale_trend_accuracy.png
+figures/data_scale_trend_f1.png
+
+图表要表达的核心：
+- CNN 在小数据下可能更稳
+- ViT 对数据规模更敏感
+- 如果 ViT 在 100% 数据下提升更明显，可以作为最终结论支撑
+
+注意：
+如果最终结果不是 ViT 超过 CNN，也不要强行画成超过。
+图要忠实反映实验结果。
+
+验收标准：
+这张图能直接支撑报告中的“数据规模影响模型表现”这一节。
+
+
+============================================================
+七、队员C详细任务 3：Confusion Matrix
+============================================================
+
+目标：
+分析 CNN 和 ViT 在类别层面的错误差异。
+
+主图建议：
+使用 100% data 的 best checkpoint：
+
+checkpoints/cnn_ratio1.0_best.pth
+checkpoints/vit_ratio1.0_best.pth
+
+输出：
+
+figures/confusion_matrix_cnn_ratio1.0.png
+figures/confusion_matrix_vit_ratio1.0.png
+
+如果时间够，再补充 10% data：
+
+figures/confusion_matrix_cnn_ratio0.1.png
+figures/confusion_matrix_vit_ratio0.1.png
+
+重点关注类别：
+- cat / dog
+- automobile / truck
+- deer / horse
+- bird / airplane
+
+图表要求：
+- 使用同一套 class names
+- 横轴 predicted label
+- 纵轴 true label
+- 数字清晰
+- 颜色不要过于刺眼
+- CNN 和 ViT 的图风格保持一致
+- 可以使用归一化混淆矩阵，便于比较
+
+错误分析文字建议：
+每张图后写 3 到 5 句话，例如：
+
+1. CNN 在局部纹理相似类别上容易混淆，例如 cat 和 dog。
+2. ViT 在数据充分时对整体结构的捕捉更强，因此某些类别混淆有所减少。
+3. automobile 和 truck 的错误可能来自形状和背景相似。
+4. 小数据比例下，ViT 可能更容易出现类别混淆，说明其对数据规模更敏感。
+
+验收标准：
+报告中不仅有图，还能有简短、有针对性的类别级分析。
+
+
+============================================================
+八、队员C详细任务 4：Attention Map
+============================================================
+
+目标：
+生成 ViT attention map，用于展示 ViT 如何关注图像区域。
+
+输入：
+checkpoints/vit_ratio1.0_best.pth
+测试集图片若干张
+
+推荐命令：
+python visualize_attention.py --checkpoint checkpoints/vit_ratio1.0_best.pth --output figures/
+
+如果 B 支持指定图片：
+python visualize_attention.py --checkpoint checkpoints/vit_ratio1.0_best.pth --image path/to/image.png --output figures/attention_map_vit_sample1.png
+
+输出建议：
+figures/attention_map_vit_ratio1.0_sample1.png
+figures/attention_map_vit_ratio1.0_sample2.png
+figures/attention_map_vit_ratio1.0_sample3.png
+
+选图建议：
+优先选择：
+1. 预测正确且 attention 清晰的样本
+2. 容易混淆类别的样本，例如 cat/dog、truck/automobile
+3. 背景复杂但模型仍能识别的样本
+
+注意：
+如果 visualize_attention.py 报 patch_size、embed_dim、shape mismatch 错误，不要自己乱改模型结构。
+应反馈给 B：
+“attention 可视化脚本与训练时 ViT 配置不一致，请统一 patch_size、embed_dim、depth、num_heads。”
+
+验收标准：
+至少生成 3 张可以放入报告/PPT 的 attention map。
+
+
+============================================================
+九、队员C详细任务 5：类别级错误分析
+============================================================
+
+目标：
+不只是画混淆矩阵，还要总结 CNN 和 ViT 的错误差异。
+
+建议输出一个 class_error_analysis.txt，包含：
+
+1. 每个模型错误率最高的类别
+2. 最容易互相混淆的类别对
+3. CNN 和 ViT 在同一类别上的差异
+4. 这些差异可能说明了什么
+
+可分析指标：
+
+per-class accuracy
+top confused pairs
+difference between CNN and ViT confusion matrices
+
+输出文件：
+figures/class_error_comparison.png
+class_error_analysis.txt
+
+分析示例：
+
+在 100% 数据条件下，CNN 和 ViT 都容易在 cat/dog 上出现混淆，说明这两类图像在局部纹理和姿态上具有较高相似性。相比之下，ViT 在 truck/automobile 上的混淆如果更低，可能说明其全局结构建模能力在数据充分时更有优势。但在 10% 数据条件下，ViT 可能出现更明显的类别错误，说明 Transformer 类模型对训练数据规模更加敏感。
+
+
+============================================================
+十、队员C图像风格要求
+============================================================
+
+所有图建议统一风格：
+
+1. 图片尺寸
+适合 PPT：宽图可以 10 × 6 inches
+适合报告：8 × 5 inches
+
+2. 分辨率
+至少 300 dpi
+
+3. 字体
+标题、坐标轴、图例字体不要太小。
+
+4. 颜色
+CNN 和 ViT 使用固定颜色。
+同一模型在不同图中的颜色保持一致。
+不要使用过于花哨的颜色。
+
+5. 图例
+图例不要挡住曲线。
+
+6. 文件格式
+优先保存 PNG。
+如果报告需要高清矢量图，可以额外保存 PDF。
+
+7. 命名
+文件名必须能看出模型、数据比例和图类型。
+
+
+============================================================
+十一、队员C给B的交付内容
+============================================================
+
+C 最终要交给 B：
+
+1. figures/ 文件夹
+包含所有最终图。
+
+2. 每张图的简短说明
+例如：
+data_scale_trend_accuracy.png：展示 CNN 和 ViT 在 10%、20%、100% 数据规模下的 best validation accuracy 变化。
+
+3. class_error_analysis.txt
+包含混淆矩阵分析。
+
+4. attention map 样本说明
+说明每张 attention map 对应的真实类别、预测类别、是否预测正确。
+
+5. 可放入 PPT 的推荐图清单
+告诉 B 哪几张图最适合放 PPT。
+
+
+============================================================
+十二、给 AI / Codex 的队员C Vibecoding Prompt
+============================================================
+
+可以直接复制以下内容给 AI/Codex：
+
+你现在协助我完成 ViT-CNN 项目的队员C任务。我的角色不是训练代码负责人，也不是完整实验运行负责人。我负责根据队员A提供的 logs 和 checkpoints 生成报告/PPT 可用的可视化图表和错误分析。
+
+请不要实现 Mixup / CutMix。
+请不要重写 train.py 的核心训练逻辑。
+请不要修改模型结构。
+如果 attention 可视化加载 checkpoint 失败，请只指出问题并建议反馈给队员B统一修复配置。
+
+我需要你帮我完成以下工作：
+
+1. 编写 plot_learning_curve.py
+读取以下 CSV：
+logs/cnn_ratio0.1.csv
+logs/cnn_ratio0.2.csv
+logs/cnn_ratio1.0.csv
+logs/vit_ratio0.1.csv
+logs/vit_ratio0.2.csv
+logs/vit_ratio1.0.csv
+
+绘制：
+figures/learning_curve_cnn.png
+figures/learning_curve_vit.png
+figures/learning_curve_compare_ratio0.1.png
+figures/learning_curve_compare_ratio0.2.png
+figures/learning_curve_compare_ratio1.0.png
+
+图中至少包含 val_acc 曲线；如果 CSV 中有 train_loss 和 val_f1，也可以一起绘制。
+
+2. 编写 plot_data_scale_trend.py
+读取 results_summary.csv 或 logs 文件，提取 CNN 和 ViT 在 10%、20%、100% 下的 best_val_acc 和 best_val_f1。
+绘制：
+figures/data_scale_trend_accuracy.png
+figures/data_scale_trend_f1.png
+
+横轴是 data ratio，纵轴是 accuracy 或 F1。
+CNN 和 ViT 各一条线。
+
+3. 编写 plot_confusion_matrix.py
+加载：
+checkpoints/cnn_ratio1.0_best.pth
+checkpoints/vit_ratio1.0_best.pth
+
+在测试集上预测，生成混淆矩阵：
+figures/confusion_matrix_cnn_ratio1.0.png
+figures/confusion_matrix_vit_ratio1.0.png
+
+如果时间允许，也支持 ratio0.1 的 checkpoint。
+
+4. 编写 class_error_analysis.py
+计算：
+per-class accuracy
+top confused class pairs
+CNN 和 ViT 的类别错误差异
+
+输出：
+figures/class_error_comparison.png
+class_error_analysis.txt
+
+重点分析：
+cat/dog
+automobile/truck
+deer/horse
+bird/airplane
+
+5. 使用或修复调用 visualize_attention.py
+目标是生成：
+figures/attention_map_vit_ratio1.0_sample1.png
+figures/attention_map_vit_ratio1.0_sample2.png
+figures/attention_map_vit_ratio1.0_sample3.png
+
+如果报错来自 patch_size、embed_dim、depth、num_heads 不一致，请不要乱改 checkpoint，而是输出一段反馈给队员B：
+“visualize_attention.py 的 ViT 配置与训练 checkpoint 不一致，需要由 B 统一从 config 或 checkpoint 读取模型参数。”
+
+6. 图像风格要求
+所有图必须有标题、坐标轴、图例。
+输出 PNG，dpi=300。
+图像适合放入论文报告和 PPT。
+文件命名清晰，统一保存到 figures/。
+
+最终请输出：
+- 新增了哪些脚本；
+- 每个脚本如何运行；
+- 每个脚本读取哪些输入文件；
+- 每个脚本输出哪些图片；
+- 如果缺少 logs 或 checkpoint，应该提示哪些文件缺失；
+- 哪几张图最适合放到最终 PPT。
+
+
+============================================================
+十三、队员C最终验收标准
+============================================================
+
+队员C完成任务的标准：
+
+[ ] learning curve 图完成
+[ ] data scale trend 图完成
+[ ] CNN confusion matrix 完成
+[ ] ViT confusion matrix 完成
+[ ] attention map 至少 3 张
+[ ] class_error_analysis.txt 完成
+[ ] 所有图像命名清楚
+[ ] 所有图像可直接放入报告/PPT
+[ ] 图表结论不夸大，忠实反映实验结果
+[ ] 已把最终 figures/ 文件夹交给 B
+
+一句话总结：
+队员C负责把 A 跑出的实验结果转化成清晰、统一、有分析价值的图表材料。C 的价值不在于改训练代码，而在于让最终报告和 PPT 有证据、有图、有分析。

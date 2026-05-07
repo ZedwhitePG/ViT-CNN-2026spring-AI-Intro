@@ -1,0 +1,768 @@
+ViT-CNN 项目后半程分工与队员B详细开发任务单
+版本：中期后优化阶段
+核心原则：除 Mixup / CutMix 外，其余训练优化、数据增强、工程整理都可以做
+队员B定位：代码优化与工程整合负责人，负责把项目代码改成可稳定训练、可复现、可画图、可交付的状态
+
+
+============================================================
+一、三人总分工
+============================================================
+
+队员B：代码优化与工程整合负责人
+主要负责所有代码层面的修改，包括训练策略、配置统一、实验入口、日志输出、checkpoint 管理、数据增强开关、attention 可视化脚本配置修复、README 基础结构。
+后续还要负责 PPT，因此代码部分要尽量一次性整理清楚，让 A 能直接运行，让 C 能直接读日志和模型文件出图。
+
+队员A：实验运行、调参与结果记录负责人
+主要负责使用队员B写好的代码运行实验、调整参数、记录结果、反馈 bug。
+A 不主要负责写核心代码，而是负责把实验真实跑出来，并把每组实验的 accuracy、F1-score、loss 曲线、checkpoint 路径、log 路径整理好。
+
+队员C：可视化与图表材料负责人
+主要负责根据 A 跑出的 logs 和 checkpoints 出图，包括 learning curve、confusion matrix、data scale trend、attention map，以及报告/PPT 可用的图像材料。
+C 如果发现可视化脚本接口或模型配置有问题，应反馈给 B 统一改代码。
+
+
+============================================================
+二、队员B的总目标
+============================================================
+
+队员B的目标不是只改几行参数，而是把整个项目从“中期能跑”整理成“后期可复现、可优化、可展示”的状态。
+
+最终 B 需要交付：
+
+1. 统一后的 config.py
+2. 优化后的 train.py
+3. 支持批量实验的 main.py
+4. 可一键运行的 run.sh
+5. 统一格式的 logs 输出
+6. 统一命名的 checkpoints 输出
+7. 修复后的 visualize_attention.py 配置逻辑
+8. 可选增强策略的 dataset.py
+9. README.md 基础框架
+10. 给 A 的运行说明
+11. 给 C 的图表输入说明
+
+
+============================================================
+三、禁止事项
+============================================================
+
+1. 不做 Mixup / CutMix
+原因：
+Mixup / CutMix 需要修改 label 处理方式和 loss 计算方式，容易破坏现有训练循环，也会增加报告解释成本。
+本阶段为了保证稳定交付，不引入 Mixup / CutMix。
+
+2. 不要把关键参数硬编码在多个文件里
+例如 lr、epochs、batch_size、model_type、data_ratio、patch_size、embed_dim 等参数都应该从 config 或 argparse 中读取。
+不要出现 train.py 里一套参数，config.py 里另一套参数的情况。
+
+3. 不要让输出文件随机命名
+所有 log、checkpoint、figure 输入文件都必须按 model + data_ratio 统一命名。
+
+4. 不要只让 ViT 享受优化而 CNN 不享受
+除了 ViT 专属的 attention 可视化外，训练策略、数据增强、日志记录应尽量对 CNN 和 ViT 公平一致。
+否则报告里不好解释。
+
+5. 不要在主实验里混入太多未记录的调参
+所有改变结果的设置都要能从 config、命令行参数或日志中追踪。
+
+
+============================================================
+四、队员B详细任务 1：config.py 配置统一
+============================================================
+
+目标：
+把所有关键训练参数集中管理，避免 train.py、main.py、dataset.py、visualize_attention.py 各自写死参数。
+
+需要包含的参数：
+
+1. 基础训练参数
+- num_epochs = 100
+- batch_size
+- learning_rate = 3e-4
+- weight_decay = 0.05
+- seed
+- num_workers
+- device
+
+2. 学习率调度参数
+- scheduler = "warmup_cosine"
+- warmup_epochs = 5
+- min_lr 可选，例如 1e-6
+
+3. AMP 参数
+- use_amp = True
+
+4. 正则化参数
+- label_smoothing = 0.1
+- grad_clip_norm = 1.0
+
+5. 数据增强参数
+- use_strong_aug = True / False
+- use_random_crop = True
+- use_color_jitter = True
+- use_random_erasing = True
+- 禁止加入 use_mixup 或 use_cutmix，或者明确写为 False 并不使用
+
+6. 实验参数
+- model_type: cnn / vit
+- data_ratio: 0.1 / 0.2 / 1.0
+- save_dir
+- log_dir
+
+7. ViT 模型参数
+- image_size = 64
+- patch_size = 8
+- embed_dim = 256
+- depth
+- num_heads
+- mlp_ratio
+- dropout
+
+8. CNN 模型参数
+根据当前仓库结构保留已有参数即可，不需要过度复杂化。
+
+验收标准：
+A 不需要手动打开 train.py 改参数。
+A 只需要改 config 或通过命令行传参，就能控制模型类型、数据比例、epoch、lr、是否 AMP、是否强增强。
+
+
+============================================================
+五、队员B详细任务 2：train.py 训练流程优化
+============================================================
+
+目标：
+把 train.py 改成稳定、规范、可记录、可复现的训练脚本。
+
+需要实现的优化：
+
+------------------------------------------------------------
+2.1 Warmup + Cosine 学习率调度
+------------------------------------------------------------
+
+现状问题：
+config 中有 warmup_epochs，但 train.py 可能没有真正实现 warmup。
+ViT 对训练早期学习率非常敏感，如果一开始 lr 太高，attention 参数容易震荡。
+
+实现要求：
+- 前 warmup_epochs 轮线性 warmup
+- warmup 后进入 cosine decay
+- 与 optimizer 绑定
+- 每个 epoch 正确 step
+- 日志中记录当前 learning rate
+
+推荐逻辑：
+第 0 到 warmup_epochs - 1 轮：
+lr 从较小值线性增加到 base_lr
+
+warmup_epochs 之后：
+lr 按 cosine 从 base_lr 下降到 min_lr
+
+验收标准：
+训练日志中可以看到 lr 前 5 轮逐步上升，之后平滑下降。
+不能只写了参数但没有实际调用 scheduler.step()。
+
+------------------------------------------------------------
+2.2 lr 统一为 3e-4
+------------------------------------------------------------
+
+现状问题：
+如果 train.py 默认 lr 是 1e-3，而 config.py 写 3e-4，就会造成配置不一致。
+ViT 用 1e-3 容易训练不稳定。
+
+实现要求：
+- train.py 中 optimizer 使用 config.learning_rate
+- 不允许在 train.py 里重新硬编码 1e-3
+- README 和运行命令中也保持 3e-4
+
+验收标准：
+打印或日志中显示实际 lr = 3e-4。
+
+------------------------------------------------------------
+2.3 num_epochs 调整为 100
+------------------------------------------------------------
+
+原因：
+ViT 收敛通常比 CNN 慢，50 epoch 可能还没充分收敛。
+AMP 开启后，100 epoch 训练时间可接受。
+
+实现要求：
+- config.py 默认 num_epochs = 100
+- main.py 和 run.sh 默认跑 100 epoch
+- 日志保存完整 100 行 epoch 记录
+
+验收标准：
+CSV 文件中有 100 个 epoch 的记录，除非 A 手动指定更小 epoch 进行 debug。
+
+------------------------------------------------------------
+2.4 AMP 混合精度训练
+------------------------------------------------------------
+
+目标：
+提高训练速度，降低显存压力，方便 A 跑完整 100 epoch 实验。
+
+实现要求：
+- 在 train_epoch 中加入 torch.cuda.amp.autocast
+- 使用 GradScaler
+- 当 use_amp=True 且 device 为 cuda 时启用
+- CPU 或 use_amp=False 时自动退回普通训练
+- AMP 不应影响验证逻辑
+
+基本逻辑：
+if use_amp:
+    with autocast():
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+    scaler.scale(loss).backward()
+    scaler.step(optimizer)
+    scaler.update()
+else:
+    outputs = model(inputs)
+    loss = criterion(outputs, targets)
+    loss.backward()
+    optimizer.step()
+
+验收标准：
+RTX 4070 上能正常跑，不出现 scaler 报错。
+训练速度明显快于普通 FP32。
+如果没有 CUDA，也不会直接崩溃。
+
+------------------------------------------------------------
+2.5 Gradient Clipping
+------------------------------------------------------------
+
+目标：
+防止 ViT 训练初期梯度爆炸。
+
+实现要求：
+- 使用 torch.nn.utils.clip_grad_norm_
+- max_norm = 1.0
+- 放在 backward 之后、optimizer.step 之前
+- AMP 模式下注意先 unscale 再 clip
+
+AMP 下正确逻辑：
+scaler.scale(loss).backward()
+scaler.unscale_(optimizer)
+clip_grad_norm_(model.parameters(), max_norm)
+scaler.step(optimizer)
+scaler.update()
+
+非 AMP 下：
+loss.backward()
+clip_grad_norm_(model.parameters(), max_norm)
+optimizer.step()
+
+验收标准：
+训练不报错，loss 不出现明显 nan。
+日志可选记录 grad_norm，但不是必须。
+
+------------------------------------------------------------
+2.6 Label Smoothing
+------------------------------------------------------------
+
+目标：
+降低模型过度自信，提高泛化能力。
+
+实现要求：
+- criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+- label_smoothing 从 config 读取
+- CNN 和 ViT 都统一使用，保证公平
+
+验收标准：
+train.py 中没有普通 CrossEntropyLoss 和 label_smoothing 版本混用的情况。
+
+------------------------------------------------------------
+2.7 AdamW 与 weight_decay 对齐
+------------------------------------------------------------
+
+目标：
+确认优化器使用 AdamW，并且 weight_decay = 0.05。
+
+实现要求：
+- optimizer = torch.optim.AdamW(...)
+- lr 从 config 读取
+- weight_decay 从 config 读取
+- 不要用 Adam 替代 AdamW
+
+验收标准：
+日志或打印中能看到 optimizer=AdamW, weight_decay=0.05。
+
+
+============================================================
+六、队员B详细任务 3：CSV 日志输出
+============================================================
+
+目标：
+让 A 跑完实验后，C 可以直接读取 CSV 出图，不需要手动复制结果。
+
+每个实验输出一个 CSV：
+
+logs/cnn_ratio0.1.csv
+logs/cnn_ratio0.2.csv
+logs/cnn_ratio1.0.csv
+logs/vit_ratio0.1.csv
+logs/vit_ratio0.2.csv
+logs/vit_ratio1.0.csv
+
+每个 CSV 至少包含以下列：
+
+epoch
+train_loss
+train_acc
+val_loss
+val_acc
+val_f1
+lr
+epoch_time
+best_val_acc
+
+可选列：
+model_type
+data_ratio
+use_amp
+use_strong_aug
+seed
+
+实现要求：
+- 每个 epoch 结束后追加一行
+- 如果文件不存在，先写 header
+- 如果重新跑同名实验，建议覆盖旧文件，避免混入历史数据
+- 保证 pandas 可以直接 read_csv
+
+验收标准：
+C 能直接用 pandas.read_csv("logs/vit_ratio1.0.csv") 读取。
+画 learning curve 时不需要重新清洗格式。
+
+
+============================================================
+七、队员B详细任务 4：Checkpoint 保存规范
+============================================================
+
+目标：
+让 A 跑完实验后，每个模型权重清晰可找，C 可以直接加载用于混淆矩阵和 attention map。
+
+输出命名：
+
+checkpoints/cnn_ratio0.1_best.pth
+checkpoints/cnn_ratio0.2_best.pth
+checkpoints/cnn_ratio1.0_best.pth
+checkpoints/vit_ratio0.1_best.pth
+checkpoints/vit_ratio0.2_best.pth
+checkpoints/vit_ratio1.0_best.pth
+
+可选保存最后一轮：
+
+checkpoints/cnn_ratio0.1_last.pth
+checkpoints/vit_ratio1.0_last.pth
+
+保存内容建议包含：
+- model_state_dict
+- optimizer_state_dict
+- scheduler_state_dict
+- epoch
+- best_val_acc
+- config
+- model_type
+- data_ratio
+
+验收标准：
+C 加载 checkpoint 时能知道它对应哪个模型、哪个数据比例、最佳精度是多少。
+不要只保存裸 model.state_dict，除非 visualize_attention.py 已经按这种方式写死。
+
+
+============================================================
+八、队员B详细任务 5：main.py 统一实验入口
+============================================================
+
+目标：
+让项目可以通过统一命令运行实验，而不是手动改多个文件。
+
+需要支持：
+
+1. 指定单组实验
+示例：
+python main.py --model vit --data_ratio 1.0 --epochs 100
+
+2. 指定 CNN
+python main.py --model cnn --data_ratio 0.2 --epochs 100
+
+3. 开关强数据增强
+python main.py --model vit --data_ratio 1.0 --strong_aug
+
+4. debug 快速测试
+python main.py --model vit --data_ratio 0.1 --epochs 2 --debug
+
+main.py 需要做的事：
+- 读取参数
+- 合并 config
+- 设置随机种子
+- 创建 dataloader
+- 创建模型
+- 调用 train.py 中的 train 函数
+- 自动生成 log_path 和 checkpoint_path
+
+验收标准：
+A 不需要知道内部代码结构，只需要按命令运行即可。
+
+
+============================================================
+九、队员B详细任务 6：run.sh 一键运行全部实验
+============================================================
+
+目标：
+让 A 可以用一个脚本跑完主实验。
+
+主实验共 6 组：
+1. CNN + 10%
+2. CNN + 20%
+3. CNN + 100%
+4. ViT + 10%
+5. ViT + 20%
+6. ViT + 100%
+
+run.sh 示例逻辑：
+
+python main.py --model cnn --data_ratio 0.1 --epochs 100
+python main.py --model cnn --data_ratio 0.2 --epochs 100
+python main.py --model cnn --data_ratio 1.0 --epochs 100
+python main.py --model vit --data_ratio 0.1 --epochs 100
+python main.py --model vit --data_ratio 0.2 --epochs 100
+python main.py --model vit --data_ratio 1.0 --epochs 100
+
+可选：
+加入 --strong_aug 作为增强版实验，但主实验建议先不混入太多因素。
+
+验收标准：
+A 执行 bash run.sh 后，可以按顺序跑完所有实验。
+如果中途失败，错误信息清晰，不会覆盖已经完成的结果。
+
+
+============================================================
+十、队员B详细任务 7：utils/dataset.py 数据增强优化
+============================================================
+
+目标：
+在不做 Mixup / CutMix 的前提下，加强常规数据增强，提高 CNN 和 ViT 泛化能力。
+
+允许加入：
+
+1. RandomCrop(64, padding=8)
+2. ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)
+3. RandomErasing(p=0.25)
+
+实现要求：
+- train_transform 中使用
+- val/test transform 不使用随机增强
+- CNN 和 ViT 使用同一套增强，保证公平
+- strong_aug 可以通过 config 或命令行开关控制
+
+推荐结构：
+if use_strong_aug:
+    train_transform = Compose([
+        RandomCrop(...),
+        RandomHorizontalFlip(),
+        ColorJitter(...),
+        ToTensor(),
+        Normalize(...),
+        RandomErasing(...)
+    ])
+else:
+    train_transform = 原始增强或基础增强
+
+注意：
+RandomErasing 通常放在 ToTensor 和 Normalize 之后。
+ColorJitter 通常放在 ToTensor 之前。
+
+验收标准：
+训练集启用增强，验证集和测试集不启用增强。
+A 可以通过参数决定是否开启 strong_aug。
+报告里可以把 stronger augmentation 作为额外优化，而不是和主实验混在一起说不清。
+
+
+============================================================
+十一、队员B详细任务 8：visualize_attention.py 配置修复
+============================================================
+
+目标：
+修复 attention 可视化脚本与训练模型参数不一致的问题。
+
+现状问题：
+可视化脚本里可能写的是：
+patch_size = 4
+embed_dim = 192
+
+但训练使用的是：
+patch_size = 8
+embed_dim = 256
+
+这会导致加载 checkpoint 时报 shape mismatch。
+
+实现要求：
+- visualize_attention.py 不要硬编码错误参数
+- 从 config 或 checkpoint 中读取 ViT 参数
+- 至少保证 patch_size、embed_dim、depth、num_heads 与训练时一致
+- 加载 vit_ratio1.0_best.pth 能正常生成 attention map
+
+输入建议：
+python visualize_attention.py --checkpoint checkpoints/vit_ratio1.0_best.pth --image path/to/image.png
+
+输出建议：
+figures/attention_map_vit_ratio1.0.png
+
+验收标准：
+C 能直接用训练好的 ViT checkpoint 生成 attention map。
+不再因为 patch_size / embed_dim 不一致报错。
+
+
+============================================================
+十二、队员B详细任务 9：给 C 的图表接口说明
+============================================================
+
+目标：
+让 C 不需要读源码，也知道从哪里拿文件画图。
+
+B 需要在 README 或单独 txt 中告诉 C：
+
+1. Learning Curve 输入：
+logs/cnn_ratio0.1.csv
+logs/cnn_ratio0.2.csv
+logs/cnn_ratio1.0.csv
+logs/vit_ratio0.1.csv
+logs/vit_ratio0.2.csv
+logs/vit_ratio1.0.csv
+
+2. Data Scale Trend 输入：
+每个 csv 的 best_val_acc 或最后一个 val_acc
+
+3. Confusion Matrix 输入：
+checkpoints/cnn_ratio1.0_best.pth
+checkpoints/vit_ratio1.0_best.pth
+测试集 dataloader
+
+4. Attention Map 输入：
+checkpoints/vit_ratio1.0_best.pth
+若干测试图片
+
+5. 输出图建议：
+figures/learning_curve_cnn.png
+figures/learning_curve_vit.png
+figures/data_scale_trend.png
+figures/confusion_matrix_cnn.png
+figures/confusion_matrix_vit.png
+figures/attention_map_vit.png
+
+验收标准：
+C 可以根据这些路径直接写图表脚本。
+
+
+============================================================
+十三、队员B详细任务 10：README.md 基础结构
+============================================================
+
+目标：
+让仓库看起来像一个完整项目，而不是只是一堆代码。
+
+README 建议结构：
+
+1. Project Title
+CNN vs Vision Transformer on CIFAR-10 under Different Data Scales
+
+2. Project Overview
+说明项目比较 CNN 和 ViT 在不同数据规模下的表现。
+
+3. Motivation
+说明中期后优化重点：
+- 修复训练策略
+- 提高训练稳定性
+- 加入可复现实验入口
+- 补充可视化和错误分析
+
+4. Repository Structure
+列出：
+config.py
+main.py
+train.py
+models/
+utils/
+logs/
+checkpoints/
+figures/
+visualize_attention.py
+README.md
+run.sh
+
+5. Environment Setup
+写明：
+Python version
+PyTorch
+torchvision
+numpy
+pandas
+matplotlib
+scikit-learn
+
+6. How to Run
+单组实验：
+python main.py --model vit --data_ratio 1.0 --epochs 100
+
+全部实验：
+bash run.sh
+
+7. Experiment Design
+模型：
+CNN, ViT
+
+数据比例：
+10%, 20%, 100%
+
+指标：
+Accuracy, F1-score, Confusion Matrix
+
+8. Training Optimizations
+写清楚：
+- Warmup + Cosine Scheduler
+- AdamW with weight decay
+- AMP
+- Gradient Clipping
+- Label Smoothing
+- Strong Augmentation except Mixup/CutMix
+
+9. Results
+预留表格，等 A 跑完填入。
+
+10. Visualization
+预留：
+learning curve
+data scale trend
+confusion matrix
+attention map
+
+11. Conclusion
+等最终结果出来后再写。
+
+验收标准：
+README 至少可以让别人按照命令复现实验。
+
+
+============================================================
+十四、建议给 AI / Codex 的 Vibe Coding Prompt
+============================================================
+
+可以直接把下面这段丢给 AI/Codex：
+
+请你观察这个 ViT-CNN 项目仓库，帮我完成中期后的代码优化。我的角色是队员B，负责所有代码优化和工程整合。请注意：不要实现 Mixup 或 CutMix，除 Mixup/CutMix 外，其余训练优化都可以做。
+
+具体要求：
+
+1. 统一 config.py
+把 learning_rate=3e-4、num_epochs=100、warmup_epochs=5、weight_decay=0.05、use_amp=True、label_smoothing=0.1、grad_clip_norm=1.0 等参数集中管理。
+不要在 train.py、main.py、dataset.py 中重复硬编码关键参数。
+
+2. 优化 train.py
+实现 Warmup + Cosine 学习率调度器。
+实现 AMP 混合精度训练，使用 autocast 和 GradScaler。
+实现 gradient clipping，max_norm=1.0。
+CrossEntropyLoss 加 label_smoothing=0.1。
+优化器使用 AdamW，weight_decay=0.05。
+每个 epoch 记录 train_loss、train_acc、val_loss、val_acc、val_f1、lr、epoch_time、best_val_acc。
+
+3. 加入 CSV 日志
+每组实验输出一个 csv：
+logs/{model}_ratio{ratio}.csv
+例如 logs/vit_ratio1.0.csv。
+CSV 必须可以被 pandas 直接读取。
+
+4. 规范 checkpoint 保存
+每组实验保存：
+checkpoints/{model}_ratio{ratio}_best.pth
+最好包含 model_state_dict、optimizer_state_dict、scheduler_state_dict、epoch、best_val_acc、config。
+
+5. 优化 main.py
+支持命令行参数：
+--model cnn/vit
+--data_ratio 0.1/0.2/1.0
+--epochs
+--strong_aug
+--debug
+main.py 要能创建 dataloader、模型、optimizer、scheduler，并调用训练函数。
+
+6. 写 run.sh
+一键运行 6 组主实验：
+CNN × 10% / 20% / 100%
+ViT × 10% / 20% / 100%
+
+7. 优化 utils/dataset.py
+加入常规增强：
+RandomCrop(64, padding=8)
+ColorJitter(0.4,0.4,0.4,0.1)
+RandomErasing(p=0.25)
+但不要实现 Mixup/CutMix。
+验证集和测试集不要使用随机增强。
+
+8. 修复 visualize_attention.py
+确保 patch_size、embed_dim、depth、num_heads 与训练时 ViT 配置一致。
+不要硬编码错误参数。
+最好从 checkpoint 或 config 读取模型参数。
+让 C 可以直接用 checkpoints/vit_ratio1.0_best.pth 生成 attention map。
+
+9. 保持代码简洁
+不要大改项目结构。
+不要引入复杂依赖。
+不要破坏原来能跑的 CNN 和 ViT。
+每个改动都要保证可以被 A 运行、被 C 读取结果出图。
+
+10. 最终请给出：
+修改了哪些文件；
+每个文件改了什么；
+如何运行单组实验；
+如何运行全部实验；
+输出的 log 和 checkpoint 在哪里。
+
+
+============================================================
+十五、队员B交付检查清单
+============================================================
+
+代码层面：
+
+[ ] config.py 参数统一
+[ ] train.py 使用 config 参数
+[ ] lr 改为 3e-4
+[ ] epoch 改为 100
+[ ] Warmup + Cosine 实现
+[ ] AMP 实现
+[ ] GradScaler 正常工作
+[ ] gradient clipping 实现
+[ ] label smoothing 实现
+[ ] AdamW + weight_decay=0.05 确认
+[ ] CSV 日志输出
+[ ] checkpoint 规范保存
+[ ] main.py 支持命令行运行
+[ ] run.sh 可一键跑 6 组实验
+[ ] dataset.py 加入常规增强
+[ ] 明确不做 Mixup/CutMix
+[ ] visualize_attention.py 配置对齐
+[ ] README 基础结构完成
+
+测试层面：
+
+[ ] python main.py --model cnn --data_ratio 0.1 --epochs 2 可跑通
+[ ] python main.py --model vit --data_ratio 0.1 --epochs 2 可跑通
+[ ] logs 中能生成 csv
+[ ] checkpoints 中能生成 pth
+[ ] C 可以读取 csv 画图
+[ ] visualize_attention.py 可以加载 ViT checkpoint
+
+协作层面：
+
+[ ] 给 A 写清楚运行命令
+[ ] 给 A 写清楚每组实验结果记录方式
+[ ] 给 C 写清楚图表输入路径
+[ ] README 中写清楚项目结构和复现方法
+[ ] PPT 所需图表路径提前和 C 对齐
+
+
+============================================================
+十六、最终一句话版本
+============================================================
+
+队员B负责把项目代码整体优化成可训练、可复现、可记录、可出图的状态；除 Mixup/CutMix 外，Warmup、Cosine、AMP、gradient clipping、label smoothing、AdamW、weight decay、常规数据增强、日志、checkpoint、main.py、run.sh、README 和 attention 配置修复都由 B 统一完成。A 负责运行和调参，C 负责出图和图像材料。

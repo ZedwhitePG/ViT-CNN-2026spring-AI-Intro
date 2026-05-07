@@ -1,77 +1,105 @@
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
-import numpy as np
 
-def get_cifar10_loaders(data_ratio=1.0, batch_size=64, augment=True, num_workers=0):
-    """
-    函数功能：返回 CIFAR-10 (64x64) 的 DataLoader，支持训练集按比例采样。
-    Args:
-        data_ratio (float): 训练集使用的比例 (0,1]，以满足小数据退化实验的需求
-                           （至少要测试1.0, 0.2, 0.1三种比例）
-        batch_size (int): 批次大小
-        augment (bool): 是否对训练集做数据增强（随机水平翻转）
-        num_workers (int): 数据加载使用的进程数，默认为0表示在主进程中加载数据
-    Returns:
-        train_loader, test_loader
-    """
+from config import TrainConfig
 
-    # 定义均值和标准差（CIFAR-10 标准值）
+
+def build_transforms(augment=True, strong_aug=False, config=TrainConfig):
     mean = [0.4914, 0.4822, 0.4465]
     std = [0.2023, 0.1994, 0.2010]
 
-    # 训练集变换
+    train_ops = []
     if augment:
-        train_transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),    # 随机水平翻转
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
-    else:
-        train_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
-    
-    # 测试集变换（无需增强）
-    test_transform = transforms.Compose([
+        if config.use_random_crop:
+            train_ops.append(transforms.RandomCrop(config.img_size, padding=config.random_crop_padding))
+        train_ops.append(transforms.RandomHorizontalFlip())
+        if config.use_color_jitter:
+            brightness, contrast, saturation, hue = config.color_jitter
+            train_ops.append(transforms.ColorJitter(brightness, contrast, saturation, hue))
+
+    train_ops.extend([
         transforms.ToTensor(),
-        transforms.Normalize(mean, std)
+        transforms.Normalize(mean, std),
     ])
 
-    # 数据集路径
-    train_path = './data/cifar10-64/train'
-    test_path = './data/cifar10-64/test'
+    if augment and config.use_random_erasing:
+        train_ops.append(transforms.RandomErasing(p=config.random_erasing_p))
 
-    # 加载完整训练集
-    full_train_dataset = ImageFolder(root=train_path, transform=train_transform)
-    test_dataset = ImageFolder(root=test_path, transform=test_transform)
+    eval_ops = [
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std),
+    ]
 
-    # 根据 data_ratio 采样训练集
-    if data_ratio < 1.0:
+    return transforms.Compose(train_ops), transforms.Compose(eval_ops)
+
+
+def get_cifar10_loaders(
+    data_ratio=TrainConfig.data_ratio,
+    batch_size=TrainConfig.batch_size,
+    augment=TrainConfig.use_augmentation,
+    strong_aug=TrainConfig.use_strong_aug,
+    num_workers=TrainConfig.num_workers,
+    seed=TrainConfig.seed,
+    train_dir=TrainConfig.train_dir,
+    test_dir=TrainConfig.test_dir,
+    max_train_samples=None,
+    max_test_samples=None,
+):
+    """
+    Return CIFAR-10 64x64 train/test loaders with optional ratio sampling.
+
+    Mixup and CutMix are intentionally not implemented in this project stage.
+    Random augmentation is applied only to the training set.
+    """
+    if not (0 < data_ratio <= 1.0):
+        raise ValueError(f"data_ratio must be in (0, 1], got {data_ratio}")
+
+    train_transform, test_transform = build_transforms(augment=augment, strong_aug=strong_aug)
+    full_train_dataset = ImageFolder(root=train_dir, transform=train_transform)
+    test_dataset = ImageFolder(root=test_dir, transform=test_transform)
+
+    rng = np.random.default_rng(seed)
+
+    if data_ratio < 1.0 or max_train_samples is not None:
         num_samples = int(len(full_train_dataset) * data_ratio)
-        # 随机打乱并选择前 num_samples 个索引 
-        indices = np.random.permutation(len(full_train_dataset))[:num_samples]  
-        # 创建子集数据集  
-        train_dataset = Subset(full_train_dataset, indices)
+        if max_train_samples is not None:
+            num_samples = min(num_samples, max_train_samples)
+        num_samples = max(1, num_samples)
+        indices = rng.permutation(len(full_train_dataset))[:num_samples]
+        train_dataset = Subset(full_train_dataset, indices.tolist())
     else:
         train_dataset = full_train_dataset
 
-    # 创建 DataLoader
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
-                             num_workers=num_workers, pin_memory=True)
+    if max_test_samples is not None:
+        num_samples = max(1, min(len(test_dataset), max_test_samples))
+        indices = rng.permutation(len(test_dataset))[:num_samples]
+        test_dataset = Subset(test_dataset, indices.tolist())
 
+    pin_memory = torch.cuda.is_available()
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
     return train_loader, test_loader
 
-# 测试代码
+
 if __name__ == "__main__":
-    #在此处设置 data_ratio（采样比例）, batch_size（批次大小）, augment（是否增强）来测试函数
-    train_loader, test_loader = get_cifar10_loaders(data_ratio=1.0, batch_size=4, augment=True)
-    print("训练集批次数量：", len(train_loader))
-    print("测试集批次数量：", len(test_loader))
+    train_loader, test_loader = get_cifar10_loaders(data_ratio=0.1, batch_size=4, strong_aug=True, num_workers=0)
+    print("train batches:", len(train_loader))
+    print("test batches:", len(test_loader))
     for images, labels in train_loader:
         print("images shape:", images.shape)
         print("labels:", labels)
