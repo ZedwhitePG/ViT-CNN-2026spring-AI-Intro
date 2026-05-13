@@ -1,0 +1,7 @@
+model,data_ratio,epochs,learning_rate,batch_size,weight_decay,use_amp,use_strong_aug,best_val_acc,best_val_f1,final_val_acc,final_val_f1,best_epoch,training_time,log_path,checkpoint_path,notes
+cnn,0.1,100,0.0003,256,0.05,True,False,0.791600,0.790674,0.788700,0.787911,88,2969.50,logs/cnn_ratio0.1.csv,checkpoints/cnn_ratio0.1_best.pth,completed full run; num_workers=0 on Windows
+cnn,0.2,100,0.0003,256,0.05,True,False,0.843300,0.842738,0.841600,0.841338,92,3436.31,logs/cnn_ratio0.2.csv,checkpoints/cnn_ratio0.2_best.pth,completed full run; num_workers=0 on Windows
+cnn,1.0,100,0.0003,256,0.05,True,False,0.932300,0.932249,0.931600,0.931574,93,40900.64,logs/cnn_ratio1.0.csv,checkpoints/cnn_ratio1.0_best.pth,completed full run; num_workers=0 on Windows
+vit,0.1,100,0.0003,128,0.05,True,False,0.588500,0.580025,0.586900,0.579591,89,3164.80,logs/vit_ratio0.1.csv,checkpoints/vit_ratio0.1_best.pth,completed full run; default batch_size=128; num_workers=0 on Windows
+vit,0.2,100,0.0003,64,0.05,True,False,0.675900,0.668266,0.674300,0.666067,91,3755.80,logs/vit_ratio0.2.csv,checkpoints/vit_ratio0.2_best.pth,completed full rerun; batch_size=64; num_workers=0 on Windows
+vit,1.0,100,0.0003,64,0.05,True,False,0.872400,0.872058,0.871400,0.871126,90,11972.77,logs/vit_ratio1.0.csv,checkpoints/vit_ratio1.0_best.pth,completed full rerun; batch_size=64; num_workers=0 on Windows
