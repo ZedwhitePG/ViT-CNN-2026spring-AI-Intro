@@ -1,0 +1,79 @@
+=== ViT & CNN Class Error Analysis ===
+
+========================================
+Model: CNN (100% DATA)
+========================================
+Per-class Accuracy:
+  airplane  : 94.10%
+  automobile: 97.40%
+  bird      : 90.30%
+  cat       : 84.50%
+  deer      : 93.80%
+  dog       : 89.90%
+  frog      : 95.50%
+  horse     : 94.90%
+  ship      : 96.00%
+  truck     : 95.70%
+
+Top Confused Class Pairs:
+  True: cat        Pred: dog        -> 80 errors
+  True: dog        Pred: cat        -> 59 errors
+  True: bird       Pred: deer       -> 27 errors
+  True: bird       Pred: cat        -> 26 errors
+  True: truck      Pred: automobile -> 24 errors
+  True: airplane   Pred: ship       -> 23 errors
+  True: cat        Pred: bird       -> 21 errors
+  True: automobile Pred: truck      -> 19 errors
+  True: cat        Pred: deer       -> 18 errors
+  True: airplane   Pred: bird       -> 17 errors
+
+Focus Pairs Error Analysis (sum of mutual errors):
+  cat/dog: 139 errors
+  automobile/truck: 43 errors
+  deer/horse: 25 errors
+  bird/airplane: 24 errors
+
+========================================
+Model: VIT (100% DATA)
+========================================
+Per-class Accuracy:
+  airplane  : 89.60%
+  automobile: 94.30%
+  bird      : 84.90%
+  cat       : 70.70%
+  deer      : 83.10%
+  dog       : 84.00%
+  frog      : 90.50%
+  horse     : 90.70%
+  ship      : 92.10%
+  truck     : 92.50%
+
+Top Confused Class Pairs:
+  True: cat        Pred: dog        -> 146 errors
+  True: dog        Pred: cat        -> 82 errors
+  True: deer       Pred: horse      -> 50 errors
+  True: automobile Pred: truck      -> 41 errors
+  True: deer       Pred: bird       -> 37 errors
+  True: cat        Pred: bird       -> 36 errors
+  True: truck      Pred: automobile -> 36 errors
+  True: horse      Pred: dog        -> 34 errors
+  True: cat        Pred: frog       -> 33 errors
+  True: ship       Pred: airplane   -> 32 errors
+
+Focus Pairs Error Analysis (sum of mutual errors):
+  cat/dog: 228 errors
+  automobile/truck: 77 errors
+  deer/horse: 63 errors
+  bird/airplane: 52 errors
+
+=== 深度分析结论 ===
+基于混淆矩阵的深度错误分析结论（可直接用于报告）：
+1. 经典易混淆类别：猫与狗（Cat vs Dog）
+数据表现：这是两个模型重灾区。在 CNN 中，有 80 张猫被误认为狗；但在 ViT 中，这个数字飙升到了 146 张
+原理解释：猫和狗在全局轮廓上非常相似，区分它们往往依赖局部的纹理特征（比如毛发、耳朵形状、吻部特征）。CNN 凭借卷积核的“局部感知”优势，捕捉这些细粒度特征的能力更强；而我们从零训练的这版 ViT 缺乏这种归纳偏置，在数据量（5万张）不够庞大的情况下，极难自发学会区分这些高度相似的局部纹理。
+2. 工业人造物：汽车与卡车（Automobile vs Truck）
+数据表现：CNN 将 24 张卡车误判为汽车，19 张汽车误判为卡车；ViT 的失误率翻倍，分别是 36 张和 41 张。
+原理解释：这两类不仅背景相似（多为公路），且整体结构接近。这再次印证了在 CIFAR-10 这个规模的数据集上，ViT 提取有效区分特征的能力仍然弱于带有天然空间平移不变性的 CNN。
+3. 整体表现差异（Per-Class Accuracy）
+从柱状图可以看出，CNN 在所有的 10 个类别上，准确率都实现了对 ViT 的全面压制。
+完美契合了 Scaling Law 博弈。虽然 100% 比例（50,000 张图片）对普通作业来说不少，但对于“数据饥渴”的纯视觉变换器（纯手工、无预训练版的 ViT）来说，依然属于“小数据”范畴。ViT 想要展现出超越 CNN 的全局建模威力，还需要更庞大的数据喂养或更强的数据增强策略。
